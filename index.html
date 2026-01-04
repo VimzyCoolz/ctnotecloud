@@ -12,8 +12,8 @@
   nav button.active { background:#4a4aff; }
   .tab { display:none; padding:15px; }
   .tab.active { display:block; }
-  textarea { width:100%; height:200px; padding:10px; font-size:14px; }
-  .btn { margin-top:10px; padding:10px 15px; background:#4a4aff; color:#fff; border:none; cursor:pointer; }
+  input, textarea { width:100%; padding:8px; margin-bottom:10px; font-size:14px; }
+  .btn { padding:10px 15px; background:#4a4aff; color:#fff; border:none; cursor:pointer; }
   ul { list-style:none; padding:0; }
   li { background:#fff; padding:10px; margin-bottom:5px; border-radius:4px; }
 </style>
@@ -23,19 +23,35 @@
 <header>CT NoteCloud</header>
 
 <nav>
-  <button class="active" onclick="openTab('notes')">Notes</button>
+  <button class="active" onclick="openTab('login')">Login</button>
+  <button onclick="openTab('signup')">Sign Up</button>
+  <button onclick="openTab('notes')">Notes</button>
   <button onclick="openTab('saved')">Saved</button>
-  <button onclick="openTab('search')">Search</button>
   <button onclick="openTab('profile')">Profile</button>
-  <button onclick="openTab('settings')">Settings</button>
-  <button onclick="openTab('about')">About</button>
 </nav>
 
+<!-- LOGIN -->
+<div id="login" class="tab active">
+  <h3>Login</h3>
+  <input type="email" id="loginEmail" placeholder="Email">
+  <input type="password" id="loginPassword" placeholder="Password">
+  <button class="btn" onclick="login()">Login</button>
+</div>
+
+<!-- SIGNUP -->
+<div id="signup" class="tab">
+  <h3>Sign Up</h3>
+  <input type="text" id="signupUsername" placeholder="Username">
+  <input type="email" id="signupEmail" placeholder="Email">
+  <input type="password" id="signupPassword" placeholder="Password">
+  <input type="file" id="signupPic">
+  <button class="btn" onclick="signup()">Sign Up</button>
+</div>
+
 <!-- NOTES -->
-<div id="notes" class="tab active">
+<div id="notes" class="tab">
   <h3>Write Note</h3>
   <textarea id="noteInput" placeholder="Write your note here..."></textarea>
-  <br>
   <button class="btn" onclick="saveNote()">Save Note</button>
 </div>
 
@@ -45,49 +61,19 @@
   <ul id="notesList"></ul>
 </div>
 
-<!-- SEARCH -->
-<div id="search" class="tab">
-  <h3>Search Notes</h3>
-  <input type="text" id="searchInput" placeholder="Search..." style="width:100%;padding:8px;">
-  <ul id="searchResults"></ul>
-</div>
-
 <!-- PROFILE -->
 <div id="profile" class="tab">
   <h3>Profile</h3>
-  <p>Profile Picture</p>
-  <input type="file">
-  <p>Username</p>
-  <p>Email</p>
-</div>
-
-<!-- SETTINGS -->
-<div id="settings" class="tab">
-  <h3>Settings</h3>
-  <label>
-    <input type="checkbox"> Dark Mode
-  </label>
-  <br><br>
-  <label>
-    Font Size
-    <select>
-      <option>Small</option>
-      <option selected>Medium</option>
-      <option>Large</option>
-    </select>
-  </label>
-</div>
-
-<!-- ABOUT -->
-<div id="about" class="tab">
-  <h3>About</h3>
-  <p><strong>CT NoteCloud</strong></p>
-  <p>Simple cloud-based notebook</p>
-  <p>Version 1.0</p>
-  <p>Powered by CoolzTech</p>
+  <p id="profileUsername">Username: -</p>
+  <p id="profileEmail">Email: -</p>
+  <p>Profile Picture:</p>
+  <img id="profilePic" src="" alt="Profile" width="100">
 </div>
 
 <script>
+let currentUser = null;
+
+// Tab switching
 function openTab(tabId) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
@@ -95,68 +81,102 @@ function openTab(tabId) {
   event.target.classList.add('active');
 }
 
-// Save note — only calls existing backend if it exists
-async function saveNote() {
-  const content = document.getElementById("noteInput").value;
-  if (!content) return alert("Write something first!");
-  
-  try {
-    await fetch("/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content })
-    });
-  } catch(e) {
-    console.warn("Saving might not work if backend not set up.");
-  }
+// LOGIN
+async function login() {
+  const email = document.getElementById("loginEmail").value;
+  const password = document.getElementById("loginPassword").value;
 
+  try {
+    const res = await fetch("/users/login", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if(data.success) {
+      currentUser = data.user;
+      alert("Login successful!");
+      openTab('notes');
+      loadNotes();
+      updateProfile();
+    } else {
+      alert(data.message || "Login failed");
+    }
+  } catch(e) { alert("Login error"); }
+}
+
+// SIGNUP
+async function signup() {
+  const username = document.getElementById("signupUsername").value;
+  const email = document.getElementById("signupEmail").value;
+  const password = document.getElementById("signupPassword").value;
+  const pic = document.getElementById("signupPic").files[0];
+
+  try {
+    const formData = new FormData();
+    formData.append("username", username);
+    formData.append("email", email);
+    formData.append("password", password);
+    if(pic) formData.append("pic", pic);
+
+    const res = await fetch("/users/signup", {
+      method:"POST",
+      body: formData
+    });
+    const data = await res.json();
+    if(data.success){
+      currentUser = data.user;
+      alert("Signup successful!");
+      openTab('notes');
+      loadNotes();
+      updateProfile();
+    } else alert(data.message || "Signup failed");
+  } catch(e){ alert("Signup error"); }
+}
+
+// SAVE NOTE
+async function saveNote() {
+  if(!currentUser) return alert("Please login first!");
+  const content = document.getElementById("noteInput").value;
+  if(!content) return;
+
+  await fetch("/notes", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ content, userId: currentUser._id })
+  });
   document.getElementById("noteInput").value = "";
   loadNotes();
 }
 
-// Load saved notes — only works if backend exists
+// LOAD NOTES
 async function loadNotes() {
-  try {
-    const res = await fetch("/notes");
-    const notes = await res.json();
+  if(!currentUser) return;
+  const res = await fetch(`/notes?userId=${currentUser._id}`);
+  const notes = await res.json();
 
-    const list = document.getElementById("notesList");
-    list.innerHTML = "";
-
-    if(notes.length === 0) {
-      const li = document.createElement("li");
-      li.textContent = "No saved notes yet.";
-      list.appendChild(li);
-      return;
-    }
-
-    notes.forEach(note => {
-      const li = document.createElement("li");
-      li.textContent = note.content;
-      list.appendChild(li);
-    });
-  } catch(e) {
-    const list = document.getElementById("notesList");
-    list.innerHTML = "<li>Backend not connected. Notes will not be saved online.</li>";
+  const list = document.getElementById("notesList");
+  list.innerHTML = "";
+  if(notes.length === 0){
+    const li = document.createElement("li");
+    li.textContent = "No saved notes yet.";
+    list.appendChild(li);
+    return;
   }
+  notes.forEach(note => {
+    const li = document.createElement("li");
+    li.textContent = note.content;
+    list.appendChild(li);
+  });
 }
 
-// Basic search (frontend only)
-document.getElementById("searchInput").addEventListener("input", function() {
-  const term = this.value.toLowerCase();
-  const items = document.querySelectorAll("#notesList li");
-  const results = document.getElementById("searchResults");
-  results.innerHTML = "";
-  items.forEach(li => {
-    if(li.textContent.toLowerCase().includes(term)) {
-      const r = document.createElement("li");
-      r.textContent = li.textContent;
-      results.appendChild(r);
-    }
-  });
-});
-
-loadNotes();
+// UPDATE PROFILE TAB
+function updateProfile(){
+  if(!currentUser) return;
+  document.getElementById("profileUsername").textContent = "Username: "+currentUser.username;
+  document.getElementById("profileEmail").textContent = "Email: "+currentUser.email;
+  if(currentUser.pic) document.getElementById("profilePic").src = currentUser.pic;
+}
 </script>
 
 </body>
